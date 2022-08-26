@@ -76,7 +76,7 @@ func (bot *WhatsAppBot) Run() {
 		qrChan, _ := bot.waClient.GetQRChannel(context.Background())
 		err := bot.waClient.Connect()
 		if err != nil {
-			panic(err)
+			log.Fatalln("Failed to connect to WhatsApp:", err)
 		}
 		for evt := range qrChan {
 			if evt.Event == "code" {
@@ -91,9 +91,11 @@ func (bot *WhatsAppBot) Run() {
 		log.Println("Connecting to existing account...")
 		err := bot.waClient.Connect()
 		if err != nil {
-			panic(err)
+			log.Fatalln("Failed to connect to exsisting WhatsApp:", err)
 		}
 	}
+
+	bot.sendMessage("Status: Connected")
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -102,6 +104,7 @@ func (bot *WhatsAppBot) Run() {
 	log.Println("Disconnecting from  WhatsApp..")
 	bot.waClient.Disconnect()
 	log.Println("Closed whatsapp session.")
+	bot.sendMessage("Status: Disconnected")
 }
 
 func (w *WhatsAppBot) eventHandler(evt interface{}) {
