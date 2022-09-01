@@ -33,6 +33,37 @@ type WhatsAppBot struct {
 	mxClient *matrix.Client
 }
 
+type Message interface {
+	Format() string
+	FormatHtml() string
+}
+
+type ChatMessage struct {
+	context string
+	user    string
+	content string
+}
+
+func (m ChatMessage) Format() string {
+	return fmt.Sprintf("[%s] %s: %s", m.context, m.user, m.content)
+}
+
+func (m ChatMessage) FormatHtml() string {
+	return fmt.Sprintf("<i>[%s]</i> <b>%s:</b> %s", m.context, m.user, m.content)
+}
+
+type StatusMessage struct {
+	content string
+}
+
+func (m StatusMessage) Format() string {
+	return fmt.Sprintf("[BOT SATUS]: %s", m.content)
+}
+
+func (m StatusMessage) FormatHtml() string {
+	return fmt.Sprintf("<b>[BOT STATUS]:</b> %s", m.content)
+}
+
 func main() {
 	cfg := Config{
 		HomeserverURL: os.Getenv("HOMESERVER_URL"),
@@ -95,7 +126,7 @@ func (bot *WhatsAppBot) Run() {
 		}
 	}
 
-	bot.sendMessage("Status: Connected")
+	bot.sendMessage(StatusMessage{content: "Connected"})
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -104,10 +135,10 @@ func (bot *WhatsAppBot) Run() {
 	log.Println("Disconnecting from  WhatsApp..")
 	bot.waClient.Disconnect()
 	log.Println("Closed whatsapp session.")
-	bot.sendMessage("Status: Disconnected")
+	bot.sendMessage(StatusMessage{content: "Disconnected"})
 }
 
-func (w *WhatsAppBot) eventHandler(evt interface{}) {
+func (bot *WhatsAppBot) eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		if v.Info.IsFromMe {
@@ -115,11 +146,11 @@ func (w *WhatsAppBot) eventHandler(evt interface{}) {
 		}
 
 		phoneNumber := v.Info.MessageSource.Sender.User
-		conversation := v.Message.GetConversation()
+		content := v.Message.String()
 		var username string
 		var context string
 
-		contact, err := w.waClient.Store.Contacts.GetContact(v.Info.Sender)
+		contact, err := bot.waClient.Store.Contacts.GetContact(v.Info.Sender)
 		if err != nil {
 			log.Println("Failed to get user info:", err)
 		}
@@ -129,7 +160,7 @@ func (w *WhatsAppBot) eventHandler(evt interface{}) {
 			username = fmt.Sprintf("+%s", phoneNumber)
 		}
 		if v.Info.IsGroup {
-			group, err := w.waClient.GetGroupInfo(v.Info.Chat)
+			group, err := bot.waClient.GetGroupInfo(v.Info.Chat)
 			if err != nil {
 				log.Println("Failed to get group info:", err)
 				context = "Unkown group"
@@ -137,22 +168,18 @@ func (w *WhatsAppBot) eventHandler(evt interface{}) {
 				context = group.Name
 			}
 		} else {
-			context = "DM " + phoneNumber
+			context = "DM"
 		}
-		w.notify(context, username, conversation)
+		msg := ChatMessage{context, username, content}
+		bot.sendMessage(msg)
 	case *events.Presence:
 		log.Printf("[WA PRESENCE] %s: %s %v\n", v.From.User, v.LastSeen, v.Unavailable)
 	}
 }
 
-func (w *WhatsAppBot) notify(context string, username string, conversation string) {
-	msg := fmt.Sprintf("[%s] %s: %v", context, username, conversation)
-	log.Println("[NOTIFY]", msg)
-	w.sendMessage(msg)
-}
-
-func (w *WhatsAppBot) sendMessage(msg string) {
-	_, err := w.mxClient.SendFormattedText(w.cfg.RoomID, msg, "<b>"+msg+"</b>")
+func (bot *WhatsAppBot) sendMessage(msg Message) {
+	log.Println("[SEND MESSAGE]", msg.Format())
+	_, err := bot.mxClient.SendFormattedText(bot.cfg.RoomID, msg.Format(), msg.FormatHtml())
 	if err != nil {
 		log.Println("ERROR: Failed to send matrix message:", err)
 	}
